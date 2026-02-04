@@ -1,3 +1,4 @@
+numpy
 tqdm
 tqdm_joblib
 scikit-video
@@ -15,3 +16,7 @@ seaborn
 invoke
 umap-learn
 scikit-learn
+matplotlib
+packaging
+typing-extensions
+decorator

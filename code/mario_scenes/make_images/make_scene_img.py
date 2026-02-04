@@ -14,13 +14,13 @@ Output:
     PNG images in sourcedata/level_backgrounds/ and sourcedata/scene_backgrounds/
 """
 
-import retro
+import stable_retro as retro
 import numpy as np
 import scipy.ndimage
 import glob
 import pandas as pd
-from cneuromod_vg_utils.replay import replay_bk2, get_variables_from_replay
-from cneuromod_vg_utils.metadata import collect_bk2_files
+from videogames_utils.replay import replay_bk2, get_variables_from_replay
+from videogames_utils.metadata import collect_bk2_files
 import os.path as op
 from mario_scenes.load_data import load_scenes_info
 from PIL import Image

@@ -4,7 +4,7 @@ import argparse
 import os
 import os.path as op
 import gzip
-import retro
+import stable_retro as retro
 import pandas as pd
 import numpy as np
 import skvideo.io
@@ -18,9 +18,9 @@ from tqdm_joblib import tqdm_joblib
 import traceback
 from mario_scenes.load_data import load_scenes_info
 # Import general-purpose functions directly from videogames.utils
-from cneuromod_vg_utils.video import make_mp4, make_gif, make_webp
-from cneuromod_vg_utils.replay import get_variables_from_replay
-from cneuromod_vg_utils.metadata import collect_bk2_files, create_sidecar_dict
+from videogames_utils.video import make_mp4, make_gif, make_webp
+from videogames_utils.replay import get_variables_from_replay
+from videogames_utils.metadata import collect_bk2_files, create_sidecar_dict
 
 
 def prune_variables(variables, start_idx, end_idx):

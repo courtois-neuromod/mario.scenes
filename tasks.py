@@ -26,8 +26,8 @@ import os
 import os.path as op
 
 # Import airoh utility tasks
-from airoh.utils import setup_env_python, ensure_dir_exist, clean_folder
-from airoh.datalad import get_data
+#from airoh.utils import setup_env_python, ensure_dir_exist, clean_folder # not used in this script and creat a error on HPC
+#from airoh.datalad import get_data # same as previous line
 
 BASE_DIR = op.dirname(op.abspath(__file__))
 
@@ -66,7 +66,6 @@ def setup_env(c):
         "pip install -e ."
     )
 
-
 @task
 def setup_env_on_hpc(c):
     """🖥️ Set up environment on HPC computing clusters.
@@ -91,16 +90,17 @@ def setup_env_on_hpc(c):
     This task assumes you're running on an HPC cluster with access to the
     module system and git repositories.
     """
-    c.run(
-        "module load python/3.10 && "
+    c.run("module load StdEnv/2023 gcc/12.3 python/3.10 opencv/4.10.0 qt/6.5.3 && "
         f"python -m venv {BASE_DIR}/env && "
-        "cd mario_scenes_env/lib/python3.10/site-packages && "
+        "cd env/lib/python3.10/site-packages && "
         "git clone git@github.com:farama-foundation/stable-retro && "
+        "git clone git@github.com:courtois-neuromod/videogames_utils.git &&"
         "cd ../../../.. && "
-        "source ./mario_scenes_env/bin/activate && "
-        "pip install -e mario_scenes_env/lib/python3.10/site-packages/stable-retro/. && "
+        "source env/bin/activate && "
+        "pip install -e env/lib/python3.10/site-packages/stable-retro/. &&"
+        "pip install -e env/lib/python3.10/site-packages/videogames_utils/. &&"
         "pip install -r requirements_hpc.txt && "
-        "pip install -e ."
+        "pip install -e . &&"
     )
 
 

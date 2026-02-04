@@ -20,7 +20,7 @@ dependencies = [
     "umap-learn",
     "scikit-learn",
     "opencv-python",
-    "cneuromod-vg-utils @ git+https://github.com/courtois-neuromod/videogames.utils.git"
+    "videogames-utils @ git+https://github.com/courtois-neuromod/videogames_utils.git"
 ]
 description = "A set of functions and code to split levels of the game Super Mario Bros. into smaller atomic scenes."
 authors = [{name = "Yann Harel"}]
