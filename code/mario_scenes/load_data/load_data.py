@@ -76,6 +76,7 @@ def load_annotation_data():
     """
     # Create the 'scene_ID' column
     df = load_scenes_info(format='df')
+    df = df.dropna(subset=['World', 'Level', 'Scene'])
     df['scene_ID'] = df.apply(
         lambda row: f"w{int(row['World'])}l{int(row['Level'])}s{int(row['Scene'])}",
         axis=1
