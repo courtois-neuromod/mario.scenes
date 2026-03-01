@@ -100,7 +100,7 @@ def setup_env_on_hpc(c):
         "pip install -e env/lib/python3.10/site-packages/stable-retro/. &&"
         "pip install -e env/lib/python3.10/site-packages/videogames_utils/. &&"
         "pip install -r requirements_hpc.txt && "
-        "pip install -e . &&"
+        "pip install -e ."
     )
 
 
