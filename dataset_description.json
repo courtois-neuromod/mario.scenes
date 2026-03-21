@@ -1,17 +1,1 @@
-{
-    "Name": ".",
-    "BIDSVersion": "1.6.0",
-    "GeneratedBy": [
-        {
-            "Name": "Courtois Neuromod",
-            "Version": "1.0.0",
-            "CodeURL": "https://github.com/courtois-neuromod/mario.scenes/src/mario_scenes/clips_extraction/clip_extraction.py"
-        }
-    ],
-    "SourceDatasets": [
-        {
-            "URL": "https://github.com/courtois-neuromod/mario/"
-        }
-    ],
-    "License": "CC0"
-}
+.git/annex/objects/MF/VP/MD5E-s594--a00316bcbb4294ae69bc0b741a38bae2.json/MD5E-s594--a00316bcbb4294ae69bc0b741a38bae2.json
