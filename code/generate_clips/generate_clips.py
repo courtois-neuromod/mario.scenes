@@ -1,1 +1,1 @@
-../../.git/annex/objects/FK/g5/MD5E-s18759--aebab1ae92106c47c0458a38c5687cc1.py/MD5E-s18759--aebab1ae92106c47c0458a38c5687cc1.py
+/annex/objects/MD5E-s18759--aebab1ae92106c47c0458a38c5687cc1.py
