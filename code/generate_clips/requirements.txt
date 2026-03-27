@@ -1,1 +1,6 @@
-/annex/objects/MD5E-s106--5b890e952ffbfc70175af24a9c050431.txt
+stable-retro
+joblib
+tqdm
+tqdm-joblib
+pandas
+git+https://github.com/courtois-neuromod/videogames_utils.git
