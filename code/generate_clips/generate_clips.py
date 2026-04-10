@@ -51,9 +51,22 @@ MIN_CLIP_FRAMES = 6  # Clips shorter than this (~0.1 s) are skipped
 # Clip code generation
 # ---------------------------------------------------------------------------
 
-def get_clip_code(ses, run, bk2_idx, start_frame):
-    """Build a 14-character clip code: ``SSSRRBB_FFFFFFF``."""
-    return f"{int(ses):03d}{int(run):02d}{int(bk2_idx):02d}{start_frame:07d}"
+def get_clip_code(ses, bids_run, rep_index, start_frame):
+    """Build a 14-character clip code: ``SSSRRBBNNNNNNN``.
+
+    Parameters
+    ----------
+    ses : str or int
+        Session number (3 digits).
+    bids_run : str or int
+        BIDS run number within the session (2 digits).
+    rep_index : int
+        1-based position of the .bk2 within its BIDS run, as given by
+        the ``rep_index`` column in ``desc-annotated_events.tsv``.
+    start_frame : int
+        Frame index at which the scene traversal begins (7 digits).
+    """
+    return f"{int(ses):03d}{int(bids_run):02d}{int(rep_index):02d}{start_frame:07d}"
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +224,8 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
         bk2_path = op.join(data_path, bk2_file)
         sub = bk2_info["sub"]
         ses = bk2_info["ses"]
-        run = bk2_info["run"]
-        bk2_idx = bk2_info["bk2_idx"]
+        bids_run = bk2_info["bids_run"]
+        rep_index = bk2_info["rep_index"]
 
         # -----------------------------------------------------------
         # Replay the bk2 using the low-level iterator so we capture
@@ -228,7 +241,7 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
 
         # skip_first_step=True only for the first bk2 in its BIDS run,
         # matching generate_replays.py's idx_in_run==0 logic.
-        is_first_rep = (int(bk2_info.get("idx_in_run", run)) == 0)
+        is_first_rep = (rep_index == 1)
         for frame, keys, annotations, audio_chunk, chunk_rate, _, acts, state in replay_bk2(
             bk2_path,
             skip_first_step=is_first_rep,
@@ -284,7 +297,7 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
                     stats["clips_too_short"] += 1
                     continue
 
-                clip_code = get_clip_code(ses, run, bk2_idx, start_idx)
+                clip_code = get_clip_code(ses, bids_run, rep_index, start_idx)
 
                 paths = _build_clip_paths(
                     output_dir, sub, ses, curr_level, scene_id, clip_code,
@@ -318,7 +331,7 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
                     clip_stats = compute_clip_stats(clip_vars) if clip_vars else None
 
                     metadata = _build_clip_metadata(
-                        sub, ses, run, curr_level, scene_id, clip_code,
+                        sub, ses, bids_run, curr_level, scene_id, clip_code,
                         start_idx, end_idx, outcome, bk2_file,
                         phase=source_phase, clip_stats=clip_stats,
                     )
@@ -355,28 +368,26 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
 
 
 # ---------------------------------------------------------------------------
-# idx_in_run enrichment
+# BK2 metadata enrichment from annotated events
 # ---------------------------------------------------------------------------
 
-def _add_idx_in_run(bk2_files, data_path):
-    """Enrich each bk2_info with its position among valid bk2s in its BIDS run.
+def _enrich_bk2_info(bk2_files, data_path):
+    """Add BIDS run number and rep_index to each bk2_info dict.
 
-    Reads ``_events.tsv`` files from the mario dataset (same as
-    ``generate_annotations.py``) and records the 0-based index of each bk2
-    within its run, counting only non-missing entries.  This index is used to
-    reproduce the ``skip_first_step`` logic of ``generate_replays.py``, which
-    sets ``skip_first_step=(idx_in_run == 0)``.
+    Reads ``desc-annotated_events.tsv`` files from the mario dataset and
+    extracts the BIDS run (from the filename) and the 1-based ``rep_index``
+    column (temporal position of the .bk2 within its run).
 
     Parameters
     ----------
     bk2_files : list[dict]
         Output of :func:`collect_bk2_files`.  Each dict is mutated in-place
-        to add an ``idx_in_run`` key.
+        to add ``bids_run`` (str) and ``rep_index`` (int, 1-based) keys.
     data_path : str
         Root of the mario dataset.
     """
-    # Build mapping: bk2_file (relative path) -> idx_in_run
-    bk2_to_idx = {}
+    # Build mapping: bk2 relative path -> (bids_run, rep_index)
+    bk2_to_info = {}
 
     seen_events = set()
     for info in bk2_files:
@@ -386,28 +397,50 @@ def _add_idx_in_run(bk2_files, data_path):
         if not op.exists(func_dir):
             continue
         for fname in sorted(os.listdir(func_dir)):
-            if (fname.endswith("_events.tsv")
-                    and "scenes" not in fname
-                    and "annotated" not in fname):
-                key = (sub, ses, fname)
-                if key in seen_events:
-                    continue
-                seen_events.add(key)
-                try:
-                    events_df = pd.read_table(op.join(func_dir, fname))
-                    game_rows = events_df[
-                        events_df["trial_type"] == "gym-retro_game"
-                    ]["stim_file"]
-                    idx = 0
-                    for stim in game_rows:
-                        if isinstance(stim, str) and stim != "Missing file":
-                            bk2_to_idx[stim] = idx
-                            idx += 1
-                except Exception:
-                    pass
+            if not (fname.endswith("_events.tsv")
+                    and "annotated" in fname
+                    and "scenes" not in fname):
+                continue
+            key = (sub, ses, fname)
+            if key in seen_events:
+                continue
+            seen_events.add(key)
+
+            # Extract BIDS run from filename, e.g.
+            # sub-01_ses-004_task-mario_run-01_desc-annotated_events.tsv
+            bids_run = None
+            for part in fname.replace(".tsv", "").split("_"):
+                if part.startswith("run-"):
+                    bids_run = part.split("-", 1)[1]
+                    break
+            if bids_run is None:
+                continue
+
+            try:
+                events_df = pd.read_table(op.join(func_dir, fname))
+                game_rows = events_df[
+                    events_df["trial_type"] == "gym-retro_game"
+                ]
+                for _, row in game_rows.iterrows():
+                    stim = row.get("stim_file")
+                    rep_idx = row.get("rep_index")
+                    if (isinstance(stim, str) and stim != "Missing file"
+                            and pd.notna(rep_idx)):
+                        bk2_to_info[stim] = (bids_run, int(rep_idx))
+            except Exception:
+                pass
 
     for info in bk2_files:
-        info["idx_in_run"] = bk2_to_idx.get(info["bk2_file"], int(info["run"]))
+        bk2_rel = info["bk2_file"]
+        if bk2_rel in bk2_to_info:
+            info["bids_run"], info["rep_index"] = bk2_to_info[bk2_rel]
+        else:
+            logging.warning(
+                f"No annotated events entry for {bk2_rel}, "
+                f"falling back to run='00', rep_index=1"
+            )
+            info["bids_run"] = "00"
+            info["rep_index"] = 1
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +470,7 @@ def main(args):
 
     scenes_info = load_scenes_info(format="dict")
     bk2_files = collect_bk2_files(data_path, args.subjects, args.sessions)
-    _add_idx_in_run(bk2_files, data_path)
+    _enrich_bk2_info(bk2_files, data_path)
 
     logging.info(f"Processing {len(bk2_files)} bk2 files ({args.n_jobs} jobs)")
 
