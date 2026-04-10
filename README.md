@@ -125,6 +125,26 @@ datalad push
 
 See `code/archives/README.md` for more options.
 
+## Clip codes
+
+Each scene clip is assigned a 14-character numeric **clip code** that uniquely identifies when and where a clip was played within the experiment. The code is constructed by zero-padding and concatenating four fields:
+
+```
+SSSRRBBNNNNNNN
+│  │ │ └─ start frame within the .bk2 replay (7 digits)
+│  │ └─── rep_index: 1-based position of the .bk2 within its run (2 digits)
+│  └───── BIDS run number within the session (2 digits)
+└──────── session number (3 digits)
+```
+
+For example, the clip code `00101030000122` encodes session 1 (`001`), run 1 (`01`), 3rd repetition in that run (`03`), starting at frame 122 (`0000122`).
+
+The `rep_index` field reflects the temporal position of the source `.bk2` replay within its BIDS run, as recorded in the `rep_index` column of the mario dataset's `desc-annotated_events.tsv` files. Note that this is **not** the same as the `rep-XXX` entity in the original `.bk2` filenames, which numbers repetitions per level rather than per run.
+
+**Use as an ordinal variable.** Because sessions are numbered chronologically, runs proceed in order within each session, and `rep_index` preserves the play order within each run, sorting clip codes lexicographically (or numerically) recovers the temporal order in which clips were played across the entire experiment. This makes the clip code a convenient ordinal variable for analyses that need to account for time-on-task, learning effects, or longitudinal trends.
+
+**Encoded information.** Beyond ordering, the clip code lets you recover the session, BIDS run, position within the run, and exact frame at which the scene traversal began — without needing to open the corresponding `_summary.json`.
+
 ## Scene annotation schema
 
 Scenes are atomic gameplay segments defined by spatial boundaries within each level. Each of the 74 scenes across worlds 1 and 2 is annotated with 27 binary gameplay features:
