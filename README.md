@@ -1,306 +1,169 @@
-# Mario Scenes
+# mario.scenes
 
-Extract, analyze, and cluster atomic gameplay scenes from Super Mario Bros replay data.
+A BIDS derivatives dataset containing atomic scene-level clips and annotations extracted from Super Mario Bros gameplay replays, part of the [Courtois NeuroMod](https://www.cneuromod.ca/) project.
 
-## Overview
+Derived from the [mario](https://github.com/courtois-neuromod/mario) dataset.
 
-This package processes Super Mario Bros gameplay recordings (.bk2 files) from the [Courtois NeuroMod project](https://www.cneuromod.ca/) to:
+## Data structure
 
-- **Extract** individual scene clips from full-level replays
-- **Annotate** scenes with 27 gameplay features (enemies, gaps, platforms, etc.)
-- **Analyze** scenes using dimensionality reduction (PCA, UMAP, t-SNE)
-- **Cluster** scenes by gameplay similarity
+```
+mario.scenes/
+├── code/
+│   ├── utils.py                              # Shared utilities
+│   ├── generate_clips/                       # Scene clip extraction
+│   ├── generate_annotations/                 # Scene event annotations
+│   └── archives/                             # Pack/unpack gamelogs archives
+├── sub-{01..06}/ses-{XXX}/
+│   ├── gamelogs.tar                          # Archived scene clips (see below)
+│   └── func/
+│       └── *_desc-scenes_events.tsv          # Scene event annotations
+├── dataset_description.json
+└── README.md
+```
 
-Scenes are atomic gameplay segments with consistent mechanics (e.g., "gap with enem─ies", "staircase descent"). This decomposition enables fine-grained behavioral and neural analysis.
+### gamelogs.tar
 
-This package is a companion to [cneuromod.mario](https://github.com/courtois-neuromod/mario) and integrates with:
+Each session's clip files are bundled into a single uncompressed `.tar` archive
+(`gamelogs.tar`) to keep the number of tracked files manageable.  Once
+extracted, the archive produces a flat `gamelogs/` directory containing one set
+of files per scene traversal:
 
-- [mario.replays](https://github.com/courtois-neuromod/mario.replays) - Extract replay-level metadata (recommended for enriched clip metadata)
-- [mario.annotations](https://github.com/courtois-neuromod/mario.annotations)
-- [mario_learning](https://github.com/courtois-neuromod/mario_learning)
-- [mario_curiosity.scene_agents](https://github.com/courtois-neuromod/mario_curiosity.scene_agents)
+```
+sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122
+```
 
-## Installation
+- `.bk2` — Deterministic replay recorded via stable-retro, starting from the scene entry state
+- `_recording.mp4` — Video playback of the clip
+- `.state` — Gzipped emulator RAM at the frame of scene entry
+- `_summary.json` — Metadata (scene ID, outcome, frame range, source .bk2, etc.)
+
+**To access clip files**, first `datalad get` the archive for your sessions of
+interest, then extract with `code/archives/decompress.py` (see
+[Accessing the data](#accessing-the-data) below).
+
+### func/
+
+BIDS-compatible event files with scene traversal annotations interleaved with base `gym-retro_game` repetition events:
+
+| Column | Description |
+|--------|-------------|
+| `trial_type` | `gym-retro_game` (base) or `scene` (traversal) |
+| `scene_id` | e.g. `w1l1s3` — scene identifier |
+| `onset` | Event onset in seconds |
+| `duration` | Event duration in seconds |
+| `outcome` | `completed` or `death` |
+| `clip_code` | 14-character clip identifier |
+| `stim_file` | Relative path to the clip `.bk2` |
+
+## Accessing the data
+
+### 1. Get archives
+
+Use `datalad get` to download the sessions you need:
 
 ```bash
-# Clone and install
-git clone git@github.com:courtois-neuromod/mario.scenes
-cd mario.scenes
-pip install -e .
+# One session
+datalad get sub-01/ses-001/gamelogs.tar
 
-# Download scene metadata
-invoke get-scenes-data
+# All sessions for a subject
+datalad get sub-01/*/gamelogs.tar
 
-# (Optional) Download full Mario dataset
-invoke setup-mario-dataset
+# Everything
+datalad get */*/gamelogs.tar
 ```
 
-**HPC Setup (computing clusters):**
+### 2. Extract clip files
 
 ```bash
-pip install invoke
-invoke setup-env-on-hpc
+pip install -r code/archives/requirements.txt
+
+# Extract all downloaded archives
+python code/archives/decompress.py -o .
+
+# Or restrict to specific subjects/sessions
+python code/archives/decompress.py -o . --subjects sub-01 --sessions ses-001
 ```
 
-## Quick Start
+This unpacks each `gamelogs.tar` into the corresponding `gamelogs/` directory.
+Sessions that are already extracted are skipped automatically.
 
-### 1. Extract Scene Clips
+Note: paths in `stim_file` columns of the events TSVs point to individual
+files inside `gamelogs/` and will only resolve after extraction.
 
-Extract video clips for each scene traversal from replay files:
+---
+
+## Generating the data
+
+### 1. Extract scene clips
 
 ```bash
-# Extract clips from all replays
-invoke create-clips --datapath sourcedata/mario --output outputdata/ \
-  --save-videos --video-format mp4
-
-# Save additional outputs (savestates, variables, ramdumps)
-invoke create-clips --save-states --save-variables --save-ramdumps
+cd code/generate_clips
+pip install -r requirements.txt
+python generate_clips.py -d /path/to/mario -o /path/to/mario.scenes -nj 4 -v
 ```
 
-**Process specific subjects/sessions:**
+### 2. Generate scene annotations
+
+Requires `_variables.json` files in the mario dataset (run `mario/code/replays/generate_replays.py` first).
 
 ```bash
-# Process only sub-01 and sub-02
-invoke create-clips --subjects "sub-01 sub-02"
-
-# Process only session 001
-invoke create-clips --sessions "ses-001"
-
-# Combine filters with parallel jobs
-invoke create-clips \
-  --subjects "sub-01 sub-02" \
-  --sessions "ses-001 ses-002" \
-  --n-jobs 8
+cd code/generate_annotations
+pip install -r requirements.txt
+python generate_annotations.py -d /path/to/mario -o /path/to/mario.scenes
 ```
 
-**Enhanced metadata with mario.replays**: For richer metadata including replay-level statistics (score gained, enemies killed, coins collected, etc.), first process replays with [mario.replays](https://github.com/courtois-neuromod/mario.replays):
+### 3. Archive clip files for distribution
+
+Pack each session's `gamelogs/` into a `gamelogs.tar` before pushing to datalad:
 
 ```bash
-# Generate replay-level metadata (in mario.replays directory)
-cd ../mario.replays
-invoke create-replays --save-variables --output outputdata/replays
-
-# Then use this data when extracting clips (back in mario.scenes)
-cd ../mario.scenes
-invoke create-clips --replays-path ../mario.replays/outputdata/replays
+pip install -r code/archives/requirements.txt
+python code/archives/compress.py -o /path/to/mario.scenes --remove-source
+datalad save -m "add gamelogs archives"
+datalad push
 ```
 
-**Output**: BIDS-structured directories with videos, savestates, and JSON metadata:
+See `code/archives/README.md` for more options.
+
+## Clip codes
+
+Each scene clip is assigned a 14-character numeric **clip code** that uniquely identifies when and where a clip was played within the experiment. The code is constructed by zero-padding and concatenating four fields:
 
 ```
-outputdata/
-└── sub-01/ses-001/beh/
-    ├── videos/sub-01_ses-001_run-01_level-w1l1_scene-1_clip-*.mp4
-    ├── savestates/sub-01_ses-001_run-01_level-w1l1_scene-1_clip-*.state
-    ├── variables/sub-01_ses-001_run-01_level-w1l1_scene-1_clip-*.json
-    └── infos/sub-01_ses-001_run-01_level-w1l1_scene-1_clip-*.json
+SSSRRBBNNNNNNN
+│  │ │ └─ start frame within the .bk2 replay (7 digits)
+│  │ └─── rep_index: 1-based position of the .bk2 within its run (2 digits)
+│  └───── BIDS run number within the session (2 digits)
+└──────── session number (3 digits)
 ```
 
-### 2. Analyze Scene Features
+For example, the clip code `00101030000122` encodes session 1 (`001`), run 1 (`01`), 3rd repetition in that run (`03`), starting at frame 122 (`0000122`).
 
-Reduce 27-dimensional annotations to 2D for visualization:
+The `rep_index` field reflects the temporal position of the source `.bk2` replay within its BIDS run, as recorded in the `rep_index` column of the mario dataset's `desc-annotated_events.tsv` files. Note that this is **not** the same as the `rep-XXX` entity in the original `.bk2` filenames, which numbers repetitions per level rather than per run.
 
-```bash
-invoke dimensionality-reduction
-```
+**Use as an ordinal variable.** Because sessions are numbered chronologically, runs proceed in order within each session, and `rep_index` preserves the play order within each run, sorting clip codes lexicographically (or numerically) recovers the temporal order in which clips were played across the entire experiment. This makes the clip code a convenient ordinal variable for analyses that need to account for time-on-task, learning effects, or longitudinal trends.
 
-**Output**: `outputs/dimensionality_reduction/{pca,umap,tsne}.csv`
+**Encoded information.** Beyond ordering, the clip code lets you recover the session, BIDS run, position within the run, and exact frame at which the scene traversal began — without needing to open the corresponding `_summary.json`.
 
-### 3. Cluster Scenes
+## Scene annotation schema
 
-Group scenes by gameplay similarity:
+Scenes are atomic gameplay segments defined by spatial boundaries within each level. Each of the 74 scenes across worlds 1 and 2 is annotated with 27 binary gameplay features:
 
-```bash
-# Generate clusters with 5-30 groups
-invoke cluster-scenes
+**Enemies** (5): Enemy, 2-Horde, 3-Horde, 4-Horde, Gap enemy
+**Terrain** (5): Gap, Multiple gaps, Variable gaps, Pillar gap, Valley
+**Valleys** (5): Pipe valley, Empty valley, Enemy valley, Roof valley, Roof
+**Paths** (2): 2-Path, 3-Path
+**Stairs** (5): Stair up, Stair down, Empty stair valley, Enemy stair valley, Gap stair valley
+**Other** (5): Risk/Reward, Reward, Moving platform, Flagpole, Beginning, Bonus zone
 
-# Custom cluster counts
-invoke cluster-scenes --n-clusters "10 15 20"
-```
-
-**Output**: `outputs/cluster_scenes/hierarchical_clusters.pkl`
-
-### 4. Generate Background Images
-
-Create canonical level/scene backgrounds by averaging replay frames:
-
-```bash
-# Generate all backgrounds
-invoke make-scene-images
-
-# Specific level
-invoke make-scene-images --level w1l1 --subjects sub-03
-```
-
-**Output**: `sourcedata/{level,scene}_backgrounds/*.png`
-
-### Complete Pipeline
-
-Run all processing steps:
-
-```bash
-invoke full-pipeline
-```
-
-## Python API
-
-### Load Scene Data
-
-```python
-from mario_scenes.load_data import (
-    load_scenes_info,
-    load_annotation_data,
-    load_background_images,
-    load_reduced_data
-)
-
-# Load scene boundaries
-scenes = load_scenes_info(format='dict')  # {scene_id: {start, end, layout}}
-print(scenes['w1l1s1'])  # {'start': 0, 'end': 256, 'level_layout': 0}
-
-# Load 27 feature annotations
-features = load_annotation_data()  # DataFrame (n_scenes × 27)
-print(features.loc['w1l1s1'])
-
-# Load 2D embeddings
-umap_coords = load_reduced_data(method='umap')  # DataFrame (n_scenes × 2)
-
-# Load background images
-backgrounds = load_background_images(level='scene')  # {scene_id: PIL.Image}
-```
-
-### Extract Clips Programmatically
-
-```python
-from mario_scenes.create_clips.create_clips import cut_scene_clips, get_rep_order
-from cneuromod_vg_utils.replay import get_variables_from_replay
-
-# Replay a BK2 file
-variables, info, frames, states, audio, audio_rate = get_variables_from_replay('path/to/file.bk2')
-
-# Find scene traversals
-scene_bounds = {'start': 0, 'end': 256, 'level_layout': 0}
-rep_order = get_rep_order(ses=1, run=1, bk2_idx=0)
-clips = cut_scene_clips(variables, rep_order, scene_bounds)
-
-# clips = {'0010100000000': (start_frame, end_frame), ...}
-```
-
-### Process Specific Subjects/Sessions
-
-Command-line filtering:
-
-```bash
-# Python script
-python code/mario_scenes/create_clips/create_clips.py \
-  --datapath sourcedata/mario \
-  --subjects sub-01 sub-02 \
-  --sessions ses-001 ses-002 \
-  --save-videos
-
-# Invoke task
-invoke create-clips --subjects "sub-01" --sessions "ses-001"
-```
-
-### Cluster Analysis
-
-```python
-from mario_scenes.scenes_analysis.cluster_scenes import generate_clusters
-
-# Generate hierarchical clustering
-clusters = generate_clusters([10, 20, 30])
-
-# Examine 10-cluster solution
-print(clusters[0]['n_clusters'])  # 10
-summary = clusters[0]['summary']
-print(summary[0])  # {'n_scenes': 23, 'labels': ..., 'homogeneity': ...}
-```
-
-## Scene Annotation Schema
-
-27 binary features capture gameplay elements:
-
-| Category      | Features                                                                       |
-| ------------- | ------------------------------------------------------------------------------ |
-| **Enemies**   | Enemy, 2-Horde, 3-Horde, 4-Horde, Gap enemy                                    |
-| **Terrain**   | Roof, Gap, Multiple gaps, Variable gaps, Pillar gap                            |
-| **Valleys**   | Valley, Pipe valley, Empty valley, Enemy valley, Roof valley                   |
-| **Paths**     | 2-Path, 3-Path                                                                 |
-| **Stairs**    | Stair up, Stair down, Empty stair valley, Enemy stair valley, Gap stair valley |
-| **Platforms** | Moving platform                                                                |
-| **Rewards**   | Risk/Reward, Reward, Bonus zone                                                |
-| **Landmarks** | Flagpole, Beginning                                                            |
-
-See `sourcedata/scenes_info/mario_scenes_manual_annotation.pdf` for details.
-
-## Data Format
-
-### BK2 Replay Files
-
-Recorded with [gym-retro](https://github.com/openai/retro) at 60 Hz. Files store button presses for deterministic replay.
-
-Expected structure:
-
-```
-sourcedata/mario/
-└── sub-{subject}/ses-{session}/beh/
-    ├── sub-{subject}_ses-{session}_run-{run}_level-{level}.bk2
-    └── sub-{subject}_ses-{session}_run-{run}_events.tsv
-```
-
-### Output Clips
-
-BIDS-compliant format with unique clip identifiers:
-
-```
-{output}/sub-{subject}/ses-{session}/beh/
-├── videos/       # .mp4/.gif/.webp clips
-├── savestates/   # .state files (gzipped RAM)
-├── ramdumps/     # .npz files (per-frame RAM)
-├── infos/        # .json metadata sidecars
-└── variables/    # .json game state variables
-```
-
-Filename format: `sub-{subject}_ses-{session}_run-{run}_level-{level}_scene-{scene}_clip-{code}.{ext}`
-
-## Available Tasks
-
-| Task                       | Description                                         |
-| -------------------------- | --------------------------------------------------- |
-| `setup-env`                | Create virtual environment and install dependencies |
-| `setup-env-on-hpc`         | HPC-specific environment setup                      |
-| `setup-mario-dataset`      | Download Mario dataset via datalad                  |
-| `get-scenes-data`          | Download scene metadata from Zenodo                 |
-| `dimensionality-reduction` | Apply PCA, UMAP, t-SNE to annotations               |
-| `cluster-scenes`           | Hierarchical clustering on scene features           |
-| `create-clips`             | Extract scene clips from replays                    |
-| `make-scene-images`        | Generate background images                          |
-| `full-pipeline`            | Run complete analysis workflow                      |
-
-Run `invoke --list` for full options.
+Scene definitions are hosted on [Zenodo](https://zenodo.org/records/15586709) and auto-downloaded by the scripts.
 
 ## References
 
-- **Dataset**: [Courtois NeuroMod](https://docs.cneuromod.ca/)
-- **Scene Definitions**: [Zenodo Record 15586709](https://zenodo.org/records/15586709)
-- **Related Packages**:
-    - [mario.replays](https://github.com/courtois-neuromod/mario.replays) - Replay-level metadata extraction (use with --replays-path for enriched scene metadata)
-    - [videogames.utils](https://github.com/courtois-neuromod/videogames.utils) - Replay processing utilities
-    - [airoh](https://github.com/airoh-pipeline/airoh) - Reproducible workflow framework
-
-## Citation
-
-If you use this package, please cite:
-
-```bibtex
-@misc{mario_scenes,
-  title={Mario Scenes: Atomic Scene Decomposition for Super Mario Bros},
-  author={Courtois NeuroMod Team},
-  year={2025},
-  url={https://github.com/courtois-neuromod/mario.scenes}
-}
-```
+- Courtois NeuroMod: [cneuromod.ca](https://www.cneuromod.ca/)
+- Mario dataset: [github.com/courtois-neuromod/mario](https://github.com/courtois-neuromod/mario)
+- Scene metadata: [Zenodo record 15586709](https://zenodo.org/records/15586709)
 
 ## License
 
-MIT License - See LICENSE file for details.
+CC0 — See LICENSE file for details.
