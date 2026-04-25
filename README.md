@@ -14,32 +14,18 @@ mario.scenes/
 │   ├── generate_annotations/                 # Scene event annotations
 │   └── archives/                             # Pack/unpack gamelogs archives
 ├── sub-{01..06}/ses-{XXX}/
-│   ├── gamelogs.tar                          # Archived scene clips (see below)
+│   ├── gamelogs/                             # Scene clip files (one set per traversal)
+│   │   ├── *.bk2                             # Deterministic replay recorded via stable-retro, starting from the scene entry state
+│   │   ├── *_recording.mp4                   # Video playback of the clip
+│   │   ├── *.state                           # Gzipped emulator RAM at the frame of scene entry
+│   │   └── *_summary.json                    # Metadata (scene ID, outcome, frame range, source .bk2, etc.)
 │   └── func/
 │       └── *_desc-scenes_events.tsv          # Scene event annotations
 ├── dataset_description.json
 └── README.md
 ```
 
-### gamelogs.tar
-
-Each session's clip files are bundled into a single uncompressed `.tar` archive
-(`gamelogs.tar`) to keep the number of tracked files manageable.  Once
-extracted, the archive produces a flat `gamelogs/` directory containing one set
-of files per scene traversal:
-
-```
-sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122
-```
-
-- `.bk2` — Deterministic replay recorded via stable-retro, starting from the scene entry state
-- `_recording.mp4` — Video playback of the clip
-- `.state` — Gzipped emulator RAM at the frame of scene entry
-- `_summary.json` — Metadata (scene ID, outcome, frame range, source .bk2, etc.)
-
-**To access clip files**, first `datalad get` the archive for your sessions of
-interest, then extract with `code/archives/decompress.py` (see
-[Accessing the data](#accessing-the-data) below).
+After getting the `gamelogs.tar` archives, run `python code/archives/decompress.py` to uncompress all the archives.
 
 ### func/
 
