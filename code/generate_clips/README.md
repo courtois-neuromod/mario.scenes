@@ -2,6 +2,7 @@
 
 Extract scene-level clips from Super Mario Bros replay files (.bk2).
 
+<<<<<<< HEAD
 For each source `.bk2` in the mario dataset, this script detects scene
 boundaries and records one trimmed clip `.bk2` per scene traversal. It
 produces **only** the clip `.bk2` files plus a dataset-level
@@ -12,6 +13,8 @@ The replay sidecars (`_recording.mp4`, `.state`, `_variables.json`,
 [`generate_replays`](../generate_replays/), which can run on any directory
 of clip `.bk2` files — including clips produced by artificial agents.
 
+=======
+>>>>>>> refs/remotes/origin/main
 ## Prerequisites
 
 - The [mario](https://github.com/courtois-neuromod/mario) dataset (provides `.bk2` replays and `stimuli/`)
@@ -43,17 +46,26 @@ python generate_clips.py \
 | `-sp, --stimuli` | Path to stimuli/ (default: `<datapath>/stimuli`) |
 | `--subjects` | Filter by subject(s) |
 | `--sessions` | Filter by session(s) |
+<<<<<<< HEAD
+=======
+| `--skip_variables` | Skip generating per-clip `_variables.json` files |
+>>>>>>> refs/remotes/origin/main
 | `-nj, --n_jobs` | Parallel workers (`-1` = all cores) |
 | `-v` | Verbosity (`-v` INFO, `-vv` DEBUG) |
 
 ## Output
 
+<<<<<<< HEAD
 Clip `.bk2` files are written to a flat `gamelogs/` directory per
 subject/session:
+=======
+Files are written to a flat `gamelogs/` directory per subject/session:
+>>>>>>> refs/remotes/origin/main
 
 ```
 sub-01/ses-001/gamelogs/
     sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122.bk2
+<<<<<<< HEAD
 ```
 
 A `clips_manifest.tsv` is written at the output root. It records, for
@@ -74,3 +86,16 @@ recovered from a `.bk2` alone:
 Run [`generate_replays`](../generate_replays/) next to produce the per-clip
 sidecars (video, savestate, variables, summary). It reads the
 `clips_manifest.tsv` to fold the scene metadata into each `_summary.json`.
+=======
+    sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122_recording.mp4
+    sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122.state
+    sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122_summary.json
+    sub-01_ses-001_task-mario_level-w1l1_scene-0_clip-00100000000122_variables.json
+```
+
+- `_variables.json` — Frame-by-frame game variables sliced to the clip range
+- `.bk2` — Deterministic replay recorded via stable-retro
+- `_recording.mp4` — Video playback of the clip
+- `.state` — Gzipped emulator RAM at scene entry
+- `_summary.json` — Metadata (scene ID, outcome, frame range, etc.)
+>>>>>>> refs/remotes/origin/main

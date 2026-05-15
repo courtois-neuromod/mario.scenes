@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+<<<<<<< HEAD
 """Extract scene clip replays from Super Mario Bros replay files.
 
 For each .bk2 replay in the mario dataset, detect scene boundaries and
@@ -12,6 +13,20 @@ metadata (outcome, source replay, phase) that cannot be recovered from a
 ``_variables.json``, ``_summary.json``) are generated separately by
 ``generate_replays.py``, which can run on any directory of clip ``.bk2``
 files — including clips produced by artificial agents.
+=======
+"""Extract scene clips from Super Mario Bros replay files.
+
+For each .bk2 replay in the mario dataset, detect scene boundaries and
+produce per-clip outputs in a flat ``gamelogs/`` directory:
+
+- ``.bk2``  — trimmed replay recorded via stable-retro from the clip state
+- ``_recording.mp4`` — video of the clip
+- ``.state`` — gzipped emulator RAM at clip entry
+- ``_summary.json`` — metadata sidecar
+
+Optionally, a ``_variables.json`` is also saved for each clip (frame-by-frame
+game variables sliced to the clip range).  Use ``--skip_variables`` to disable.
+>>>>>>> refs/remotes/origin/main
 
 Usage::
 
@@ -20,6 +35,11 @@ Usage::
 """
 
 import argparse
+<<<<<<< HEAD
+=======
+import gzip
+import json
+>>>>>>> refs/remotes/origin/main
 import logging
 import os
 import os.path as op
@@ -34,6 +54,7 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 from tqdm_joblib import tqdm_joblib
 from videogames_utils.metadata import collect_bk2_files
+<<<<<<< HEAD
 from videogames_utils.replay import replay_bk2, reformat_info
 
 # Add code/ to path so utils is importable
@@ -50,6 +71,18 @@ MANIFEST_COLUMNS = [
     "level", "scene_id", "start_frame", "end_frame", "duration",
     "outcome", "phase", "source_bk2",
 ]
+=======
+from videogames_utils.replay import replay_bk2, reformat_info, assemble_audio
+from videogames_utils.video import make_mp4
+
+# Add code/ to path so utils is importable
+sys.path.insert(0, op.dirname(op.dirname(op.abspath(__file__))))
+from utils import (load_scenes_info, detect_scene_traversals,
+                   compute_clip_stats, load_source_phase)
+
+GAME_NAME = "SuperMarioBros-Nes"
+MIN_CLIP_FRAMES = 6  # Clips shorter than this (~0.1 s) are skipped
+>>>>>>> refs/remotes/origin/main
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +112,11 @@ def get_clip_code(ses, bids_run, rep_index, start_frame):
 # ---------------------------------------------------------------------------
 
 def _build_clip_paths(output_dir, sub, ses, level, scene_id, clip_code):
+<<<<<<< HEAD
     """Return a dict of output paths for one clip's .bk2."""
+=======
+    """Return a dict of output file paths for one clip."""
+>>>>>>> refs/remotes/origin/main
     gamelogs = op.join(output_dir, f"sub-{sub}", f"ses-{ses}", "gamelogs")
     scene_num = int(scene_id.split("s")[-1])
     entities = (
@@ -88,11 +125,31 @@ def _build_clip_paths(output_dir, sub, ses, level, scene_id, clip_code):
     )
     return {
         "bk2": op.join(gamelogs, f"{entities}.bk2"),
+<<<<<<< HEAD
         "gamelogs": gamelogs,
         "entities": entities,
     }
 
 
+=======
+        "mp4": op.join(gamelogs, f"{entities}_recording.mp4"),
+        "state": op.join(gamelogs, f"{entities}.state"),
+        "json": op.join(gamelogs, f"{entities}_summary.json"),
+        "variables": op.join(gamelogs, f"{entities}_variables.json"),
+        "entities": entities,
+        "gamelogs": gamelogs,
+        "stim_file": op.join(
+            f"sub-{sub}", f"ses-{ses}", "gamelogs", f"{entities}.bk2"
+        ),
+    }
+
+
+def _clip_exists(paths):
+    """Return True if all clip outputs already exist."""
+    return all(op.exists(paths[k]) for k in ("bk2", "mp4", "state", "json"))
+
+
+>>>>>>> refs/remotes/origin/main
 # ---------------------------------------------------------------------------
 # BK2 creation via stable-retro recording
 # ---------------------------------------------------------------------------
@@ -128,16 +185,84 @@ def _create_clip_bk2(clip_state, clip_keys, output_path, stimuli_path):
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
+=======
+# Clip metadata
+# ---------------------------------------------------------------------------
+
+def _build_clip_metadata(sub, ses, run, level, scene_id, clip_code,
+                         start_idx, end_idx, outcome, bk2_file,
+                         phase=None, clip_stats=None):
+    """Build summary JSON content for a clip."""
+    metadata = {
+        "Subject": sub,
+        "Session": ses,
+        "Run": run,
+        "Level": level,
+        "SceneID": scene_id,
+        "ClipCode": clip_code,
+        "StartFrame": int(start_idx),
+        "EndFrame": int(end_idx),
+        "Duration": round((end_idx - start_idx) / 60, 3),
+        "Outcome": outcome,
+        "Phase": phase,
+        "SourceBk2": bk2_file,
+        "GameName": GAME_NAME,
+    }
+    if clip_stats:
+        metadata.update(clip_stats)
+    return metadata
+
+
+# ---------------------------------------------------------------------------
+# Save clip outputs
+# ---------------------------------------------------------------------------
+
+def _save_clip_outputs(paths, frames, clip_state, audio_track, audio_rate,
+                       clip_keys, metadata, stimuli_path,
+                       clip_variables=None):
+    """Write all outputs for a single clip."""
+    gamelogs = paths["gamelogs"]
+    os.makedirs(gamelogs, exist_ok=True)
+
+    # .bk2 via stable-retro recording
+    _create_clip_bk2(clip_state, clip_keys, paths["bk2"], stimuli_path)
+
+    # Video
+    make_mp4(frames, paths["mp4"], audio=audio_track, sample_rate=audio_rate)
+
+    # Savestate (gzipped emulator RAM)
+    with gzip.open(paths["state"], "wb") as fh:
+        fh.write(clip_state)
+
+    # Summary JSON
+    with open(paths["json"], "w") as f:
+        json.dump(metadata, f, indent=4)
+
+    # Variables JSON (per-clip slice of frame-by-frame game variables)
+    if clip_variables is not None:
+        with open(paths["variables"], "w") as f:
+            json.dump(clip_variables, f)
+
+
+# ---------------------------------------------------------------------------
+>>>>>>> refs/remotes/origin/main
 # Per-bk2 processing
 # ---------------------------------------------------------------------------
 
 def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
+<<<<<<< HEAD
                      stimuli_path, verbose):
     """Process one source .bk2 replay: detect scenes and record clip .bk2 files.
+=======
+                     stimuli_path, verbose, skip_variables=False):
+    """Process one .bk2 replay file: detect scenes and save clips.
+>>>>>>> refs/remotes/origin/main
 
     Returns
     -------
     tuple
+<<<<<<< HEAD
         ``(error_logs, stats, manifest_rows)`` where *stats* counts clips
         processed / skipped / errors and *manifest_rows* is a list of
         dicts (one per recorded clip) for ``clips_manifest.tsv``.
@@ -145,6 +270,13 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
     retro.data.Integrations.add_custom_path(stimuli_path)
     error_logs = []
     manifest_rows = []
+=======
+        ``(error_logs, stats)`` where *stats* counts clips processed /
+        skipped / errors.
+    """
+    retro.data.Integrations.add_custom_path(stimuli_path)
+    error_logs = []
+>>>>>>> refs/remotes/origin/main
     stats = {
         "bk2_file": bk2_info["bk2_file"],
         "clips_processed": 0,
@@ -165,6 +297,7 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
 
         # -----------------------------------------------------------
         # Replay the bk2 using the low-level iterator so we capture
+<<<<<<< HEAD
         # emulator states and raw keys alongside game variables.
         # Frames and audio are not needed here — the replay sidecars
         # are produced later by generate_replays.py.
@@ -177,25 +310,61 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
         # skip_first_step=True only for the first bk2 in its BIDS run.
         is_first_rep = (rep_index == 1)
         for _, keys, annotations, _, _, _, acts, state in replay_bk2(
+=======
+        # emulator states and raw keys alongside frames & variables.
+        # -----------------------------------------------------------
+        all_frames = []
+        all_keys = []
+        all_info = []
+        all_states = []
+        audio_chunks = []
+        audio_rate = 0
+        actions = None
+
+        # skip_first_step=True only for the first bk2 in its BIDS run,
+        # matching generate_replays.py's idx_in_run==0 logic.
+        is_first_rep = (rep_index == 1)
+        for frame, keys, annotations, audio_chunk, chunk_rate, _, acts, state in replay_bk2(
+>>>>>>> refs/remotes/origin/main
             bk2_path,
             skip_first_step=is_first_rep,
             game=GAME_NAME,
             inttype=retro.data.Integrations.CUSTOM_ONLY,
         ):
+<<<<<<< HEAD
             all_keys.append(keys)
             all_info.append(annotations["info"])
             all_states.append(state)
+=======
+            all_frames.append(frame)
+            all_keys.append(keys)
+            all_info.append(annotations["info"])
+            all_states.append(state)
+            if audio_chunk.size:
+                audio_chunks.append(audio_chunk)
+            audio_rate = chunk_rate
+>>>>>>> refs/remotes/origin/main
             if actions is None:
                 actions = acts
 
         if actions is None:
             logging.warning(f"Empty replay: {bk2_file}")
+<<<<<<< HEAD
             return error_logs, stats, manifest_rows
 
         rep_vars = reformat_info(all_info, all_keys, bk2_path, actions)
 
         logging.debug(
             f"  Replayed {len(all_keys)} frames, "
+=======
+            return error_logs, stats
+
+        rep_vars = reformat_info(all_info, all_keys, bk2_path, actions)
+        full_audio = assemble_audio(audio_chunks)
+
+        logging.debug(
+            f"  Replayed {len(all_frames)} frames, "
+>>>>>>> refs/remotes/origin/main
             f"variables keys: {sorted(k for k in rep_vars.keys() if k is not None)[:10]}..."
         )
 
@@ -227,6 +396,7 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
                     continue
 
                 clip_code = get_clip_code(ses, bids_run, rep_index, start_idx)
+<<<<<<< HEAD
                 paths = _build_clip_paths(
                     output_dir, sub, ses, curr_level, scene_id, clip_code,
                 )
@@ -252,17 +422,65 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
                 })
 
                 if op.exists(paths["bk2"]):
+=======
+
+                paths = _build_clip_paths(
+                    output_dir, sub, ses, curr_level, scene_id, clip_code,
+                )
+
+                if _clip_exists(paths):
+>>>>>>> refs/remotes/origin/main
                     logging.debug(f"Skipping existing clip {clip_code}")
                     stats["clips_skipped"] += 1
                     continue
 
                 try:
+<<<<<<< HEAD
                     os.makedirs(paths["gamelogs"], exist_ok=True)
                     _create_clip_bk2(
                         all_states[start_idx],
                         all_keys[start_idx:end_idx],
                         paths["bk2"],
                         stimuli_path,
+=======
+                    # Slice audio for the clip — skip audio when
+                    # the assembled audio doesn't cover this clip range
+                    clip_audio = None
+                    if full_audio.size and audio_rate:
+                        samples_per_frame = audio_rate // 60
+                        a_start = start_idx * samples_per_frame
+                        a_end = a_start + n_clip_frames * samples_per_frame
+                        if a_end <= full_audio.shape[0]:
+                            clip_audio = full_audio[a_start:a_end]
+
+                    # Slice per-frame variables for this clip
+                    clip_vars = None
+                    if not skip_variables:
+                        clip_vars = {
+                            k: v[start_idx:end_idx]
+                            for k, v in rep_vars.items()
+                            if k is not None
+                        }
+
+                    clip_stats = compute_clip_stats(clip_vars) if clip_vars else None
+
+                    metadata = _build_clip_metadata(
+                        sub, ses, bids_run, curr_level, scene_id, clip_code,
+                        start_idx, end_idx, outcome, bk2_file,
+                        phase=source_phase, clip_stats=clip_stats,
+                    )
+
+                    _save_clip_outputs(
+                        paths,
+                        all_frames[start_idx:end_idx],
+                        all_states[start_idx],
+                        clip_audio,
+                        audio_rate,
+                        all_keys[start_idx:end_idx],
+                        metadata,
+                        stimuli_path,
+                        clip_variables=clip_vars,
+>>>>>>> refs/remotes/origin/main
                     )
                     stats["clips_processed"] += 1
 
@@ -281,7 +499,11 @@ def process_bk2_file(bk2_info, scenes_info, data_path, output_dir,
         error_logs.append(msg)
         stats["errors"] += 1
 
+<<<<<<< HEAD
     return error_logs, stats, manifest_rows
+=======
+    return error_logs, stats
+>>>>>>> refs/remotes/origin/main
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +583,7 @@ def _enrich_bk2_info(bk2_files, data_path):
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< HEAD
 # Manifest writing
 # ---------------------------------------------------------------------------
 
@@ -392,6 +615,8 @@ def _write_manifest(manifest_rows, output_dir):
 
 
 # ---------------------------------------------------------------------------
+=======
+>>>>>>> refs/remotes/origin/main
 # Main
 # ---------------------------------------------------------------------------
 
@@ -426,21 +651,32 @@ def main(args):
         results = Parallel(n_jobs=args.n_jobs)(
             delayed(process_bk2_file)(
                 info, scenes_info, data_path, output_dir, stimuli_path,
+<<<<<<< HEAD
                 args.verbose,
+=======
+                args.verbose, args.skip_variables,
+>>>>>>> refs/remotes/origin/main
             )
             for info in bk2_files
         )
 
+<<<<<<< HEAD
     # Aggregate stats and manifest rows
+=======
+    # Aggregate stats
+>>>>>>> refs/remotes/origin/main
     total_processed = sum(r[1]["clips_processed"] for r in results)
     total_skipped = sum(r[1]["clips_skipped"] for r in results)
     total_too_short = sum(r[1]["clips_too_short"] for r in results)
     total_errors = sum(r[1]["errors"] for r in results)
     all_errors = [msg for r in results for msg in r[0]]
+<<<<<<< HEAD
     all_manifest_rows = [row for r in results for row in r[2]]
 
     if all_manifest_rows:
         _write_manifest(all_manifest_rows, output_dir)
+=======
+>>>>>>> refs/remotes/origin/main
 
     logging.warning(
         f"Done: {total_processed} clips created, "
@@ -456,7 +692,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
+<<<<<<< HEAD
         description="Extract scene clip .bk2 files from Mario replay files.",
+=======
+        description="Extract scene clips from Mario replay files."
+>>>>>>> refs/remotes/origin/main
     )
     parser.add_argument(
         "-d", "--datapath", required=True,
@@ -480,6 +720,13 @@ if __name__ == "__main__":
         help="Sessions to process (e.g. ses-001 ses-002).",
     )
     parser.add_argument(
+<<<<<<< HEAD
+=======
+        "--skip_variables", action="store_true",
+        help="Skip generating per-clip _variables.json files.",
+    )
+    parser.add_argument(
+>>>>>>> refs/remotes/origin/main
         "-nj", "--n_jobs", default=-1, type=int,
         help="Parallel jobs (-1 = all cores). Default: -1.",
     )
