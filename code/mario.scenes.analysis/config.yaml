@@ -1,0 +1,42 @@
+# Single source of truth for the mario.scenes.analysis pipeline.
+
+data:
+  worlds: all              # "all" or list e.g. [1, 2]
+  performance:
+    subject: sub-01
+    pre_session: ses-001
+    post_session: ses-002
+
+umap:
+  n_neighbors: 15
+  min_dist: 0.1
+  metric: hamming          # hamming handles sparse 0/1 vectors without manifold drop-outs
+  random_state: 42
+
+kernel:
+  distance: umap           # "umap" gives circular halos in viz; "jaccard" is faithful to modeling
+  lambda_h2: 1.2           # narrow kernel for H2
+  lambda_h3_low: 1.2       # H3 baseline λ (low ripples)
+  lambda_h3_high: 3.0      # H3 elevated λ (high ripples) — wider radius
+
+simulation:
+  seed: 0
+  ripple_demo: 0.7         # demo R_i for the 3-panel figure
+  hypotheses:
+    h1: {alpha: 0.05, eta: 0.30, sigma: 0.005}
+    h2: {gamma: 0.45, delta: 0.30, sigma: 0.01}
+    h3: {gamma: 0.45, sigma: 0.01}
+
+figure:
+  dpi: 150
+  figsize_umap: [16, 9]      # 16:9 slide aspect (2400x1350 @ 150 dpi)
+  figsize_panels: [16, 9]    # 16:9 slide aspect; 3 panels share width
+  palette:
+    background: "#ffffff"
+    cloud_default: "#cccccc"
+    pre_only: "#1f77b4"      # ses-001 only
+    post_only: "#d62728"     # ses-002 only
+    both: "#9467bd"          # both sessions
+    neither: "#e0e0e0"
+    source: "#00e5ff"        # high-contrast cyan, readable on magma
+    delta_y_cmap: "magma"

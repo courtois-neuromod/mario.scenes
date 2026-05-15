@@ -1,0 +1,6 @@
+stable-retro
+joblib
+tqdm
+tqdm-joblib
+pandas
+git+https://github.com/courtois-neuromod/videogames_utils.git
