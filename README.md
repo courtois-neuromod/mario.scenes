@@ -10,7 +10,8 @@ Derived from the [mario](https://github.com/courtois-neuromod/mario) dataset.
 mario.scenes/
 ├── code/
 │   ├── utils.py                              # Shared utilities
-│   ├── generate_clips/                       # Scene clip extraction
+│   ├── generate_clips/                       # Scene clip .bk2 extraction
+│   ├── generate_replays/                     # Replay sidecars for clip .bk2 files
 │   ├── generate_annotations/                 # Scene event annotations
 │   └── archives/                             # Pack/unpack gamelogs archives
 ├── sub-{01..06}/ses-{XXX}/
@@ -18,6 +19,7 @@ mario.scenes/
 │   │   ├── *.bk2                             # Deterministic replay recorded via stable-retro, starting from the scene entry state
 │   │   ├── *_recording.mp4                   # Video playback of the clip
 │   │   ├── *.state                           # Gzipped emulator RAM at the frame of scene entry
+│   │   ├── *_variables.json                  # Frame-by-frame game variables
 │   │   └── *_summary.json                    # Metadata (scene ID, outcome, frame range, source .bk2, etc.)
 │   └── func/
 │       └── *_desc-scenes_events.tsv          # Scene event annotations
@@ -82,13 +84,28 @@ files inside `gamelogs/` and will only resolve after extraction.
 
 ### 1. Extract scene clips
 
+Detect scene boundaries in the mario replays and record one trimmed clip
+`.bk2` per scene traversal, plus a `clips_manifest.tsv`.
+
 ```bash
 cd code/generate_clips
 pip install -r requirements.txt
 python generate_clips.py -d /path/to/mario -o /path/to/mario.scenes -nj 4 -v
 ```
 
-### 2. Generate scene annotations
+### 2. Generate replay sidecars
+
+Replay each clip `.bk2` to produce its `_recording.mp4`, `.state`,
+`_variables.json` and `_summary.json`. This step is source-agnostic and can
+also run on clip datasets produced by artificial agents.
+
+```bash
+cd code/generate_replays
+pip install -r requirements.txt
+python generate_replays.py -i /path/to/mario.scenes -sp /path/to/mario/stimuli -nj 4 -v
+```
+
+### 3. Generate scene annotations
 
 Requires `_variables.json` files in the mario dataset (run `mario/code/replays/generate_replays.py` first).
 
@@ -96,17 +113,6 @@ Requires `_variables.json` files in the mario dataset (run `mario/code/replays/g
 cd code/generate_annotations
 pip install -r requirements.txt
 python generate_annotations.py -d /path/to/mario -o /path/to/mario.scenes
-```
-
-### 3. Archive clip files for distribution
-
-Pack each session's `gamelogs/` into a `gamelogs.tar` before pushing to datalad:
-
-```bash
-pip install -r code/archives/requirements.txt
-python code/archives/compress.py -o /path/to/mario.scenes --remove-source
-datalad save -m "add gamelogs archives"
-datalad push
 ```
 
 See `code/archives/README.md` for more options.
