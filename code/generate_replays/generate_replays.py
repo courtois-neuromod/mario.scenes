@@ -131,12 +131,13 @@ def _sidecar_paths(bk2_path):
     }
 
 
-def _sidecars_exist(paths, skip_variables):
-    """Return True if all expected sidecars already exist."""
-    keys = ["mp4", "state", "summary"]
-    if not skip_variables:
-        keys.append("variables")
-    return all(op.exists(paths[k]) for k in keys)
+SIDECAR_KEYS = ("mp4", "state", "variables", "summary")
+
+
+def _sidecars_exist(paths, skips):
+    """Return True if all non-skipped sidecars already exist."""
+    keys = [k for k in SIDECAR_KEYS if not skips[k]]
+    return bool(keys) and all(op.exists(paths[k]) for k in keys)
 
 
 # ---------------------------------------------------------------------------
@@ -195,9 +196,13 @@ def _build_summary(bk2_path, n_frames, clip_stats, manifest_row):
 # Per-clip processing
 # ---------------------------------------------------------------------------
 
-def process_clip(bk2_path, stimuli_path, manifest, skip_variables,
+def process_clip(bk2_path, stimuli_path, manifest, skips,
                  skip_first_step, overwrite):
     """Replay one clip .bk2 and write its sidecars.
+
+    *skips* is a dict mapping each sidecar key in :data:`SIDECAR_KEYS`
+    (``"mp4"``, ``"state"``, ``"variables"``, ``"summary"``) to a bool —
+    ``True`` means that sidecar is not written.
 
     Returns
     -------
@@ -210,7 +215,7 @@ def process_clip(bk2_path, stimuli_path, manifest, skip_variables,
 
     try:
         paths = _sidecar_paths(bk2_path)
-        if not overwrite and _sidecars_exist(paths, skip_variables):
+        if not overwrite and _sidecars_exist(paths, skips):
             logging.debug(f"Skipping (sidecars exist): {bk2_path}")
             return error_logs, "skipped"
 
@@ -250,27 +255,31 @@ def process_clip(bk2_path, stimuli_path, manifest, skip_variables,
         n_frames = len(all_frames)
 
         # Video (with audio)
-        clip_audio = full_audio if full_audio.size else None
-        make_mp4(all_frames, paths["mp4"], audio=clip_audio,
-                 sample_rate=audio_rate)
+        if not skips["mp4"]:
+            clip_audio = full_audio if full_audio.size else None
+            make_mp4(all_frames, paths["mp4"], audio=clip_audio,
+                     sample_rate=audio_rate)
 
         # Savestate — gzipped emulator RAM at clip entry
-        with gzip.open(paths["state"], "wb") as fh:
-            fh.write(all_states[0])
+        if not skips["state"]:
+            with gzip.open(paths["state"], "wb") as fh:
+                fh.write(all_states[0])
 
         # Frame-by-frame variables
         clip_vars = {k: v for k, v in rep_vars.items() if k is not None}
-        if not skip_variables:
+        if not skips["variables"]:
             with open(paths["variables"], "w") as f:
                 json.dump(clip_vars, f)
 
         # Summary metadata + gameplay stats
-        clip_code = _parse_bids_entities(bk2_path).get("clip")
-        manifest_row = manifest.get(clip_code) if clip_code else None
-        clip_stats = compute_clip_stats(clip_vars)
-        summary = _build_summary(bk2_path, n_frames, clip_stats, manifest_row)
-        with open(paths["summary"], "w") as f:
-            json.dump(summary, f, indent=4)
+        if not skips["summary"]:
+            clip_code = _parse_bids_entities(bk2_path).get("clip")
+            manifest_row = manifest.get(clip_code) if clip_code else None
+            clip_stats = compute_clip_stats(clip_vars)
+            summary = _build_summary(bk2_path, n_frames, clip_stats,
+                                     manifest_row)
+            with open(paths["summary"], "w") as f:
+                json.dump(summary, f, indent=4)
 
         return error_logs, "processed"
 
@@ -327,6 +336,15 @@ def main(args):
     logging.info(f"Input: {input_dir}")
     logging.info(f"Stimuli: {stimuli_path}")
 
+    skips = {
+        "mp4": args.skip_mp4,
+        "state": args.skip_state,
+        "variables": args.skip_variables,
+        "summary": args.skip_summary,
+    }
+    generated = [k for k in SIDECAR_KEYS if not skips[k]]
+    logging.info(f"Sidecars to generate: {', '.join(generated) or 'none'}")
+
     manifest = load_manifest(input_dir, args.manifest)
     bk2_files = find_clip_bk2(input_dir)
     logging.info(f"Found {len(bk2_files)} clip .bk2 files ({args.n_jobs} jobs)")
@@ -334,7 +352,7 @@ def main(args):
     with tqdm_joblib(tqdm(desc="Generating replays", total=len(bk2_files))):
         results = Parallel(n_jobs=args.n_jobs)(
             delayed(process_clip)(
-                bk2, stimuli_path, manifest, args.skip_variables,
+                bk2, stimuli_path, manifest, skips,
                 args.skip_first_step, args.overwrite,
             )
             for bk2 in bk2_files
@@ -375,8 +393,24 @@ if __name__ == "__main__":
              "input directory or its parents.",
     )
     parser.add_argument(
-        "--skip_variables", action="store_true",
-        help="Skip writing per-clip _variables.json files.",
+        "--skip_mp4", action=argparse.BooleanOptionalAction, default=True,
+        help="Skip writing per-clip _recording.mp4 files. On by default; "
+             "pass --no-skip_mp4 to generate them.",
+    )
+    parser.add_argument(
+        "--skip_state", action=argparse.BooleanOptionalAction, default=True,
+        help="Skip writing per-clip .state files. On by default; "
+             "pass --no-skip_state to generate them.",
+    )
+    parser.add_argument(
+        "--skip_variables", action=argparse.BooleanOptionalAction, default=True,
+        help="Skip writing per-clip _variables.json files. On by default; "
+             "pass --no-skip_variables to generate them.",
+    )
+    parser.add_argument(
+        "--skip_summary", action=argparse.BooleanOptionalAction, default=False,
+        help="Skip writing per-clip _summary.json files. Off by default "
+             "(summaries are generated); pass --skip_summary to skip them.",
     )
     parser.add_argument(
         "--skip_first_step", action=argparse.BooleanOptionalAction,
