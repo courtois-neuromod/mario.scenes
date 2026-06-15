@@ -16,9 +16,9 @@ artificial agents.  When a ``clips_manifest.tsv`` (written by
 (``Outcome``, ``Phase``, ``SourceBk2``) is merged into each clip's entry;
 without it, those fields are simply omitted.
 
-The consolidated summary is a JSON array written once at the end of
-processing; its filename is derived from the Subject and Session entities
-found in the clips (e.g. ``sub-01_ses-001_summary.json``).
+One consolidated summary JSON is written per session at
+``sub-XX/ses-YYY/sub-XX_ses-YYY_summary.json`` (outside ``gamelogs/``),
+so it remains accessible without decompressing the archive.
 
 Usage::
 
@@ -234,23 +234,17 @@ def _load_skipped_summary(bk2_path, paths, manifest):
     return None
 
 
-def _consolidated_summary_path(input_dir, summaries):
-    """Return the output path for the per-session consolidated summary.
+def _session_summary_path(input_dir, sub, ses):
+    """Return the output path for a per-session consolidated summary.
 
-    Derives the filename from Subject and Session fields of the first
-    available summary dict.  Falls back to ``summary.json`` for data that
-    lacks those entities (e.g. some agent formats).
+    Written at sub-XX/ses-YYY/ (outside gamelogs/) so it stays accessible
+    without decompressing the archive.  Falls back to input_dir root for
+    data that lacks sub/ses entities.
     """
-    first = next((s for s in summaries if s), None)
-    if not first:
-        return op.join(input_dir, "summary.json")
-    parts = []
-    if first.get("Subject"):
-        parts.append(f"sub-{first['Subject']}")
-    if first.get("Session"):
-        parts.append(f"ses-{first['Session']}")
-    name = "_".join(parts) + "_summary.json" if parts else "summary.json"
-    return op.join(input_dir, name)
+    if sub and ses:
+        return op.join(input_dir, f"sub-{sub}", f"ses-{ses}",
+                       f"sub-{sub}_ses-{ses}_summary.json")
+    return op.join(input_dir, "summary.json")
 
 
 # ---------------------------------------------------------------------------
@@ -433,11 +427,16 @@ def main(args):
 
     if not skips["summary"]:
         all_summaries = [r[2] for r in results if r[2] is not None]
-        all_summaries.sort(key=lambda s: s.get("ClipCode", ""))
-        out_path = _consolidated_summary_path(input_dir, all_summaries)
-        with open(out_path, "w") as f:
-            json.dump(all_summaries, f, indent=4)
-        logging.warning(f"Wrote {len(all_summaries)} clip summaries → {out_path}")
+        by_session: dict[tuple, list] = {}
+        for s in all_summaries:
+            key = (s.get("Subject", ""), s.get("Session", ""))
+            by_session.setdefault(key, []).append(s)
+        for (sub, ses), session_summaries in sorted(by_session.items()):
+            session_summaries.sort(key=lambda s: s.get("ClipCode", ""))
+            out_path = _session_summary_path(input_dir, sub, ses)
+            with open(out_path, "w") as f:
+                json.dump(session_summaries, f, indent=4)
+            logging.warning(f"Wrote {len(session_summaries)} clip summaries → {out_path}")
 
     logging.warning(
         f"Done: {n_processed} replays generated, "
