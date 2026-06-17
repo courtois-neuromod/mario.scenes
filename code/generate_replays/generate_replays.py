@@ -89,35 +89,50 @@ def _decode_clip_code(clip_code):
 # Manifest loading
 # ---------------------------------------------------------------------------
 
+def _sub_from_path(path):
+    """Infer a bare subject id (``'01'``) from a ``sub-XX`` path component."""
+    for part in op.normpath(path).split(op.sep):
+        if part.startswith("sub-"):
+            return part[len("sub-"):]
+    return None
+
+
 def load_manifest(input_dir, manifest_arg=None):
-    """Load ``clips_manifest.tsv`` keyed by ``clip_code``.
+    """Load every ``clips_manifest.tsv`` under *input_dir*, keyed by ``(sub, clip_code)``.
 
-    Looks for an explicit *manifest_arg* path first, then for a
-    ``clips_manifest.tsv`` in *input_dir* or any of its parent
-    directories.  Returns an empty dict when none is found.
+    Looks for an explicit *manifest_arg* path first, then for every
+    ``clips_manifest.tsv`` found anywhere under *input_dir* — covers both
+    the single dataset-root manifest written by ``generate_clips.py`` and
+    the many per-session manifests written by model bk2 generation.
+    ``clip_code`` alone is not unique across subjects (the same code
+    recurs in every subject's curriculum), so rows are keyed by
+    ``(sub, clip_code)``; *sub* comes from the row's own ``sub`` column
+    when present, otherwise it's inferred from the manifest file's
+    ``sub-XX`` path component. Returns an empty dict when none is found.
     """
-    path = None
     if manifest_arg:
-        path = op.abspath(manifest_arg)
+        paths = [op.abspath(manifest_arg)]
     else:
-        search = op.abspath(input_dir)
-        while True:
-            candidate = op.join(search, MANIFEST_NAME)
-            if op.exists(candidate):
-                path = candidate
-                break
-            parent = op.dirname(search)
-            if parent == search:
-                break
-            search = parent
+        paths = [
+            op.join(root, MANIFEST_NAME)
+            for root, _, files in os.walk(op.abspath(input_dir))
+            if MANIFEST_NAME in files
+        ]
 
-    if path is None or not op.exists(path):
+    if not paths:
         logging.info("No clips_manifest.tsv found — proceeding without it.")
         return {}
 
-    logging.info(f"Manifest: {path}")
-    df = pd.read_table(path, dtype={"clip_code": str})
-    return {row["clip_code"]: row for row in df.to_dict("records")}
+    manifest = {}
+    for path in paths:
+        df = pd.read_table(path, dtype={"clip_code": str})
+        path_sub = _sub_from_path(path)
+        for row in df.to_dict("records"):
+            sub = str(row["sub"]).removeprefix("sub-") if row.get("sub") else path_sub
+            manifest[(sub, row["clip_code"])] = row
+        logging.info(f"Manifest: {path} ({len(df)} rows)")
+
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -219,8 +234,11 @@ def _load_skipped_summary(bk2_path, paths, manifest):
                 (len(v) for v in clip_vars.values() if isinstance(v, list)),
                 default=0,
             )
-            clip_code = _parse_bids_entities(bk2_path).get("clip")
-            manifest_row = manifest.get(clip_code) if clip_code else None
+            entities = _parse_bids_entities(bk2_path)
+            clip_code = entities.get("clip")
+            manifest_row = (
+                manifest.get((entities.get("sub"), clip_code)) if clip_code else None
+            )
             clip_stats = compute_clip_stats(clip_vars)
             return _build_summary(bk2_path, n_frames, clip_stats, manifest_row)
         except Exception:
@@ -335,8 +353,11 @@ def process_clip(bk2_path, stimuli_path, manifest, skips,
         # Summary metadata + gameplay stats (collected for consolidated write)
         summary = None
         if not skips["summary"]:
-            clip_code = _parse_bids_entities(bk2_path).get("clip")
-            manifest_row = manifest.get(clip_code) if clip_code else None
+            entities = _parse_bids_entities(bk2_path)
+            clip_code = entities.get("clip")
+            manifest_row = (
+                manifest.get((entities.get("sub"), clip_code)) if clip_code else None
+            )
             clip_stats = compute_clip_stats(clip_vars)
             summary = _build_summary(bk2_path, n_frames, clip_stats,
                                      manifest_row)
